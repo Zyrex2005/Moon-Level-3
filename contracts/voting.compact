@@ -1,0 +1,70 @@
+pragma language_version 0.23;
+
+import CompactStandardLibrary;
+
+/**
+ * Midnight Blockchain - Zero-Knowledge Private Voting Smart Contract
+ * 
+ * Architecture Overview:
+ * - Public Ledger State: Proposal ID, Proposal Text, Yes/No Tallies, Spent Nullifier Map, Voting Open Flag, Admin Commitment.
+ * - Private Witnesses: Voter Secret Key (never revealed), Vote Choice (disclosed in zkSNARK proof calculation), Admin Secret Key.
+ * - Privacy Protocol: Nullifiers derived as SHA-256 / Poseidon hash of (Voter Secret Key + Proposal ID) to enforce single-vote guarantee without revealing identity.
+ */
+
+// Ledger state (publicly readable on Midnight network indexers)
+export ledger proposalId: Bytes<32>;
+export ledger proposalText: Opaque<"string">;
+export ledger yesTally: Counter;
+export ledger noTally: Counter;
+export ledger nullifierSet: Map<Bytes<32>, Boolean>;
+export ledger votingOpen: Boolean;
+export ledger adminCommitment: Bytes<32>;
+
+// Private witness declarations (evaluated locally inside the client prover)
+witness voterSecretKey(): Bytes<32>;
+witness voteChoice(): Boolean;
+witness adminSecretKey(): Bytes<32>;
+
+// Contract Constructor: Initializes proposal parameter state and administrative hash commitment
+constructor(pId: Bytes<32>, pText: Opaque<"string">, adminCommit: Bytes<32>) {
+    proposalId = disclose(pId);
+    proposalText = disclose(pText);
+    votingOpen = true;
+    adminCommitment = disclose(adminCommit);
+}
+
+// Circuit: Cast an anonymous vote with ZK proof generation
+export circuit castVote(): [] {
+    // 1. Assert voting phase is active
+    assert(votingOpen, "Voting period is closed");
+
+    // 2. Retrieve private witness inputs
+    const sk = voterSecretKey();
+    const choice = disclose(voteChoice());
+
+    // 3. Derive deterministic cryptographic nullifier inside the ZK proof scope
+    // nullifier = persistentHash([voterSecretKey, proposalId])
+    const nullifier = disclose(persistentHash<Vector<2, Bytes<32>>>([sk, proposalId]));
+
+    // 4. Double-voting guard: verify nullifier has not been recorded on-chain
+    assert(!nullifierSet.member(nullifier), "Double voting is strictly prohibited");
+
+    // 5. Commit nullifier to ledger to prevent future usage of the same voter secret
+    nullifierSet.insert(nullifier, true);
+
+    // 6. Accumulate public tally without associating voter identity or witness key
+    if (choice) {
+        yesTally.increment(1);
+    } else {
+        noTally.increment(1);
+    }
+}
+
+// Circuit: Close the voting period (Admin authorization required)
+export circuit closeVoting(): [] {
+    const adminSk = adminSecretKey();
+    // Validate admin credentials by checking hash commitment: persistentHash(adminSk) == adminCommitment
+    assert(disclose(persistentHash<Bytes<32>>(adminSk) == adminCommitment), "Unauthorized admin access code");
+    votingOpen = false;
+}
+
