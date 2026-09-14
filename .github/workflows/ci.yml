@@ -1,0 +1,50 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+env:
+  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: 'true'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: |
+        npm ci
+
+    - name: Install Compact Compiler
+      run: |
+        curl -sSfL https://github.com/midnightntwrk/compact/releases/download/compact-v0.5.1/compact-installer.sh | sh
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+        $HOME/.local/bin/compact update 0.31.1
+
+    - name: Verify Compact Installation
+      run: |
+        compact --version
+
+    - name: Compile Compact Smart Contract
+      run: |
+        compact compile contracts/voting.compact contracts/managed/voting
+
+    - name: Run Vitest Unit Tests
+      run: |
+        npm run test
+
+    - name: Verify Frontend Production Build
+      run: |
+        npm run build
