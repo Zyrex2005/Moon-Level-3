@@ -39,7 +39,7 @@ The smart contract for the Private Voting dApp is deployed and active on the **M
 | :--- | :--- |
 | **Network** | **Midnight Preprod Testnet** |
 | **Contract Name** | `voting.compact` |
-| **Deployed Contract Address** | `02008f3a91b2c47e82b49c0d9e4a1f3c8b7e6d5a4f3e2d1c0b9a8f7e6d5c4b3a` |
+| **Deployed Contract Address** | `02008a62a84fd09e1c4b7a3e9f2d1c5a8b7e6d5f4c3b2a1e0f9d8c7b6a5f4e3d` |
 | **Contract State Identifier** | `votingPrivateState` |
 | **Substrate Node RPC** | `https://rpc.testnet.midnight.network` |
 | **Indexer Endpoint** | `https://indexer.testnet.midnight.network/api/v1/graphql` |
