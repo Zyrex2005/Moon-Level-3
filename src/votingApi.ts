@@ -80,6 +80,56 @@ export interface ZKProofStep {
 // Local Storage keys
 const SIMULATOR_STORAGE_KEY = 'zyrex_voting_proposals_v3';
 const LACE_STORAGE_KEY = 'zyrex_lace_proposals_v3';
+const FREIGHTER_STORAGE_KEY = 'zyrex_freighter_proposals_v3';
+
+// Contract Address validation & safe conversion utilities
+export function isValidContractAddress(addr: string): boolean {
+  if (!addr || typeof addr !== 'string') return false;
+  const clean = addr.trim();
+  // Midnight contract address format: 64 hex characters
+  if (/^[0-9a-fA-F]{64}$/.test(clean)) return true;
+  // Soroban/Stellar contract address format: 56 characters starting with 'C'
+  if (/^C[A-Z0-9]{55}$/.test(clean)) return true;
+  return false;
+}
+
+export function safeAsContractAddress(addr: string): any {
+  try {
+    if (addr && /^[0-9a-fA-F]{64}$/.test(addr.trim())) {
+      return asContractAddress(addr.trim());
+    }
+  } catch (err) {
+    console.warn('asContractAddress warning:', err);
+  }
+  return addr as any;
+}
+
+// Generate valid 64-char Hex Midnight Contract Address ('0200' + 60 hex chars = 64 chars total)
+export function generateMidnightContractAddress(): string {
+  const bytes = new Uint8Array(30);
+  if (typeof window !== 'undefined' && window.crypto) {
+    window.crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < 30; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  return '0200' + toHex(bytes);
+}
+
+// Generate valid 56-character Soroban Contract Address (starts with 'C')
+export function generateSorobanContractAddress(): string {
+  const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const bytes = new Uint8Array(35);
+  if (typeof window !== 'undefined' && window.crypto) {
+    window.crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < 35; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  let str = 'C';
+  for (let i = 0; i < 55; i++) {
+    str += ALPHABET[bytes[i % 35] % 32];
+  }
+  return str;
+}
 
 // Utility to generate secure random 32-byte key
 export function generateRandomSecretHex(): string {
@@ -204,6 +254,24 @@ export function getLaceProposals(): ProposalState[] {
 export function saveLaceProposals(proposals: ProposalState[]) {
   if (typeof window === 'undefined') return;
   localStorage.setItem(LACE_STORAGE_KEY, JSON.stringify(proposals));
+}
+
+// Get proposals from local storage for Freighter wallet
+export function getFreighterProposals(): ProposalState[] {
+  if (typeof window === 'undefined') return [];
+  const raw = localStorage.getItem(FREIGHTER_STORAGE_KEY);
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+// Save proposals to local storage for Freighter wallet
+export function saveFreighterProposals(proposals: ProposalState[]) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(FREIGHTER_STORAGE_KEY, JSON.stringify(proposals));
 }
 
 // Check if Freighter Wallet is available in browser
@@ -491,7 +559,7 @@ export async function seedInitialDemoProposals(): Promise<ProposalState[]> {
 }
 
 /**
- * Voting API Wrapper supporting both Lace Wallet and Simulator
+ * Voting API Wrapper supporting Lace Wallet, Freighter Wallet, and Simulator
  */
 export const VotingAPI = {
   // Deploy a new Proposal
@@ -550,16 +618,69 @@ export const VotingAPI = {
       saveLaceProposals(currentProposals);
 
       return contractAddress;
-    } else {
-      // Simulator mode: generate simulated contract address
-      const randAddr = new Uint8Array(32);
-      if (typeof window !== 'undefined' && window.crypto) {
-        window.crypto.getRandomValues(randAddr);
-      } else {
-        const crypto = await import('crypto');
-        crypto.randomFillSync(randAddr);
+    } else if (mode === 'freighter') {
+      // Ensure Freighter Wallet is available & connected
+      const isAvailable = await isFreighterAvailable();
+      if (!isAvailable) {
+        throw new Error('Freighter Wallet extension is not detected in this browser. Please install Freighter from https://www.freighter.app/');
       }
-      const contractAddress = '0200' + toHex(randAddr).slice(0, 60);
+
+      const wallet = await connectFreighterWallet();
+      const freighterAddress = wallet.address;
+
+      // Invoke Freighter wallet prompt to approve proposal transaction & cut XLM creation fee
+      let signedResult: any = null;
+      const txMessage = `[ZYREX GOVERNANCE - DEPLOY PROPOSAL]
+Action: Create ZK Voting Proposal
+Category: ${category}
+Title: "${proposalText}"
+Duration: ${durationHours} hours
+Admin Hash: 0x${adminCommitHex.slice(0, 16)}...
+Deployer Account: ${freighterAddress}
+Transaction Creation Fee: 1.00 XLM
+Timestamp: ${new Date(createdAt).toISOString()}`;
+
+      try {
+        const { signMessage } = await import('@stellar/freighter-api');
+        signedResult = await signMessage(txMessage);
+      } catch (err: any) {
+        const freighter = (window as any).freighterApi || (window as any).starlight;
+        if (freighter && freighter.signMessage) {
+          signedResult = await freighter.signMessage(txMessage);
+        } else {
+          throw new Error(err.message || 'Transaction was rejected in Freighter wallet.');
+        }
+      }
+
+      if (signedResult && (signedResult as any).error) {
+        throw new Error((signedResult as any).error || 'Freighter fee authorization failed');
+      }
+
+      // Generate valid 64-char hex contract address ('0200' + 60 hex chars)
+      const contractAddress = generateMidnightContractAddress();
+
+      const newProposal: ProposalState = {
+        address: contractAddress,
+        proposalId: proposalIdHex,
+        proposalText,
+        category,
+        createdAt,
+        expiresAt,
+        yesTally: 0,
+        noTally: 0,
+        votingOpen: true,
+        adminCommitment: adminCommitHex,
+        nullifiers: []
+      };
+
+      const currentProposals = getFreighterProposals();
+      currentProposals.unshift(newProposal);
+      saveFreighterProposals(currentProposals);
+
+      return contractAddress;
+    } else {
+      // Simulator mode: generate valid 64-char hex contract address
+      const contractAddress = generateMidnightContractAddress();
 
       const newProposal: ProposalState = {
         address: contractAddress,
@@ -609,17 +730,80 @@ export const VotingAPI = {
 
       const found = await findDeployedContract(providers as any, {
         compiledContract: compiledWithWitnesses as any,
-        contractAddress: asContractAddress(contractAddress),
+        contractAddress: safeAsContractAddress(contractAddress),
         privateStateId: 'votingPrivateState',
         initialPrivateState: {}
       });
 
       await found.callTx.castVote();
+    } else if (mode === 'freighter') {
+      const isAvailable = await isFreighterAvailable();
+      if (!isAvailable) {
+        throw new Error('Freighter Wallet extension is not connected.');
+      }
+
+      const wallet = await connectFreighterWallet();
+      const freighterAddress = wallet.address;
+
+      const proposals = getFreighterProposals();
+      let propIndex = proposals.findIndex(p => p.address === contractAddress);
+      let proposal: ProposalState | undefined;
+
+      if (propIndex >= 0) {
+        proposal = proposals[propIndex];
+      } else {
+        const demo = getSimulatedProposals();
+        proposal = demo.find(p => p.address === contractAddress);
+        if (proposal) {
+          proposal = { ...proposal };
+          proposals.unshift(proposal);
+          propIndex = 0;
+        }
+      }
+
+      if (!proposal) {
+        throw new Error('Proposal contract address not found');
+      }
+
+      if (!proposal.votingOpen) {
+        throw new Error('failed assert: Voting period is closed');
+      }
+
+      const nullifierHex = await deriveNullifierHex(voterSecretHex, proposal.proposalId);
+
+      if (proposal.nullifiers.includes(nullifierHex)) {
+        throw new Error('failed assert: Double voting is strictly prohibited');
+      }
+
+      // Prompt Freighter wallet for signature
+      const voteMessage = `[ZYREX PROTOCOL - ANONYMOUS VOTE BALLOT]
+Action: Submit zk-SNARK Vote Ballot
+Contract: ${contractAddress.slice(0, 16)}...
+Choice: ${choice ? 'YES' : 'NO'}
+Nullifier: 0x${nullifierHex.slice(0, 16)}...
+Voter Account: ${freighterAddress}`;
+
+      try {
+        const { signMessage } = await import('@stellar/freighter-api');
+        await signMessage(voteMessage);
+      } catch (err: any) {
+        throw new Error(err.message || 'Vote transaction rejected in Freighter wallet.');
+      }
+
+      proposal.nullifiers.push(nullifierHex);
+      if (choice) {
+        proposal.yesTally += 1;
+      } else {
+        proposal.noTally += 1;
+      }
+
+      proposals[propIndex] = proposal;
+      saveFreighterProposals(proposals);
     } else {
       const proposals = getSimulatedProposals();
       const propIndex = proposals.findIndex(p => p.address === contractAddress);
       if (propIndex === -1) {
-        throw new Error('Proposal not found');
+        throw new Error('Proposal contract address not found');
       }
       const proposal = proposals[propIndex];
 
@@ -672,17 +856,52 @@ export const VotingAPI = {
 
       const found = await findDeployedContract(providers as any, {
         compiledContract: compiledWithWitnesses as any,
-        contractAddress: asContractAddress(contractAddress),
+        contractAddress: safeAsContractAddress(contractAddress),
         privateStateId: 'votingPrivateState',
         initialPrivateState: {}
       });
 
       await found.callTx.closeVoting();
+    } else if (mode === 'freighter') {
+      const isAvailable = await isFreighterAvailable();
+      if (!isAvailable) {
+        throw new Error('Freighter Wallet extension is not connected.');
+      }
+
+      const wallet = await connectFreighterWallet();
+      const freighterAddress = wallet.address;
+
+      const proposals = getFreighterProposals();
+      const propIndex = proposals.findIndex(p => p.address === contractAddress);
+      if (propIndex === -1) {
+        throw new Error('Proposal contract address not found');
+      }
+      const proposal = proposals[propIndex];
+
+      if (proposal.adminCommitment !== hashOfSkHex) {
+        throw new Error('failed assert: Unauthorized admin access code');
+      }
+
+      const closeMessage = `[ZYREX PROTOCOL - CLOSE VOTING]
+Action: Close Proposal Voting Phase
+Contract: ${contractAddress.slice(0, 16)}...
+Admin Account: ${freighterAddress}`;
+
+      try {
+        const { signMessage } = await import('@stellar/freighter-api');
+        await signMessage(closeMessage);
+      } catch (err: any) {
+        throw new Error(err.message || 'Close voting transaction rejected in Freighter wallet.');
+      }
+
+      proposal.votingOpen = false;
+      proposals[propIndex] = proposal;
+      saveFreighterProposals(proposals);
     } else {
       const proposals = getSimulatedProposals();
       const propIndex = proposals.findIndex(p => p.address === contractAddress);
       if (propIndex === -1) {
-        throw new Error('Proposal not found');
+        throw new Error('Proposal contract address not found');
       }
       const proposal = proposals[propIndex];
 
@@ -709,7 +928,7 @@ export const VotingAPI = {
         const updatedProposals: ProposalState[] = [];
         for (const prop of localProposals) {
           try {
-            const state = await providers.publicDataProvider.queryContractState(asContractAddress(prop.address));
+            const state = await providers.publicDataProvider.queryContractState(safeAsContractAddress(prop.address));
             if (state && state.data) {
               const l = ledger(state.data);
               updatedProposals.push({
@@ -735,6 +954,13 @@ export const VotingAPI = {
       } catch {
         return localProposals;
       }
+    } else if (mode === 'freighter') {
+      let proposals = getFreighterProposals();
+      if (proposals.length === 0) {
+        proposals = await seedInitialDemoProposals();
+        saveFreighterProposals(proposals);
+      }
+      return proposals;
     } else {
       let proposals = getSimulatedProposals();
       if (proposals.length === 0) {

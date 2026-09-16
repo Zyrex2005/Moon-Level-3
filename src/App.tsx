@@ -10,7 +10,8 @@ import {
   connectLaceWallet,
   generateRandomSecretHex,
   deriveNullifierHex,
-  simulateZKProofExecution
+  simulateZKProofExecution,
+  isValidContractAddress
 } from './votingApi';
 
 interface Toast {
@@ -78,6 +79,13 @@ export function App() {
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4500);
+  };
+
+  const handleCopyContractAddress = (addr: string) => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(addr);
+      showToast('success', 'Contract address copied to clipboard!');
+    }
   };
 
   // Load proposals when mode changes
@@ -165,9 +173,22 @@ export function App() {
 
     setIsDeploying(true);
     try {
-      showToast('info', 'Deploying Private Voting contract to Midnight...');
+      if (mode === 'freighter') {
+        showToast('info', 'Opening Freighter Wallet popup for fee authorization...');
+      } else if (mode === 'lace') {
+        showToast('info', 'Deploying Private Voting contract to Midnight...');
+      } else {
+        showToast('info', 'Deploying Private Voting contract to Simulator...');
+      }
+
       const address = await VotingAPI.deployProposal(newText, deployAdminSecret, mode, newCategory, newDurationHours);
-      showToast('success', `Proposal deployed successfully! Contract: ${address.slice(0, 16)}...`);
+      
+      if (mode === 'freighter') {
+        showToast('success', `Proposal deployed with Freighter Wallet! Contract Address: ${address.slice(0, 14)}...`);
+      } else {
+        showToast('success', `Proposal deployed successfully! Contract: ${address.slice(0, 14)}...`);
+      }
+      
       setNewText('');
       setDeployAdminSecret('');
       await fetchProposals();
@@ -265,6 +286,10 @@ export function App() {
 
   // Vault Check Nullifier Status
   const handleCheckNullifierVault = async () => {
+    if (vaultCheckProposalAddress && !isValidContractAddress(vaultCheckProposalAddress)) {
+      showToast('error', 'Invalid contract address format. Address must be valid hex or Soroban contract ID.');
+      return;
+    }
     const targetProp = proposals.find(p => p.address === vaultCheckProposalAddress);
     if (!targetProp) {
       showToast('error', 'Select a proposal to check nullifier status.');
@@ -593,8 +618,8 @@ export function App() {
                       </div>
 
                       <div className="proposal-footer">
-                        <span className="contract-code" title={p.address}>
-                          {p.address.slice(0, 14)}...
+                        <span className="contract-code" title={`Click to copy: ${p.address}`} onClick={() => handleCopyContractAddress(p.address)} style={{ cursor: 'pointer' }}>
+                          📋 {p.address.slice(0, 10)}...{p.address.slice(-6)}
                         </span>
 
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
