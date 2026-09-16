@@ -70,6 +70,9 @@ export function App() {
   const [vaultCheckSecretKey, setVaultCheckSecretKey] = useState<string>('');
   const [vaultCheckResult, setVaultCheckResult] = useState<{ checked: boolean; isSpent: boolean; nullifierHex: string } | null>(null);
 
+  // Selected Address Modal state
+  const [selectedAddressModal, setSelectedAddressModal] = useState<string | null>(null);
+
   // Toasts
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -618,9 +621,24 @@ export function App() {
                       </div>
 
                       <div className="proposal-footer">
-                        <span className="contract-code" title={`Click to copy: ${p.address}`} onClick={() => handleCopyContractAddress(p.address)} style={{ cursor: 'pointer' }}>
-                          📋 {p.address.slice(0, 10)}...{p.address.slice(-6)}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <button
+                            className="btn-secondary"
+                            style={{ fontSize: '0.78rem', padding: '0.35rem 0.65rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                            onClick={() => handleCopyContractAddress(p.address)}
+                            title="Click to copy full 64-character contract address"
+                          >
+                            📋 Copy Address
+                          </button>
+                          <button
+                            className="btn-secondary"
+                            style={{ fontSize: '0.78rem', padding: '0.35rem 0.5rem' }}
+                            onClick={() => setSelectedAddressModal(p.address)}
+                            title="View full contract address"
+                          >
+                            🔍 View
+                          </button>
+                        </div>
 
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
                           {p.votingOpen ? (
@@ -968,6 +986,7 @@ export function App() {
                   <tr style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}>
                     <th style={{ padding: '0.75rem 1rem' }}>Category</th>
                     <th style={{ padding: '0.75rem 1rem' }}>Proposal Title</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>Contract Address</th>
                     <th style={{ padding: '0.75rem 1rem' }}>YES Tallies</th>
                     <th style={{ padding: '0.75rem 1rem' }}>NO Tallies</th>
                     <th style={{ padding: '0.75rem 1rem' }}>Total Ballots</th>
@@ -982,6 +1001,16 @@ export function App() {
                       <tr key={p.address} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                         <td style={{ padding: '0.85rem 1rem' }}><span className="category-tag">{p.category}</span></td>
                         <td style={{ padding: '0.85rem 1rem', fontWeight: 500 }}>{p.proposalText}</td>
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          <button
+                            className="btn-secondary"
+                            style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
+                            onClick={() => setSelectedAddressModal(p.address)}
+                            title="Click to view/copy full contract address"
+                          >
+                            📋 {p.address.slice(0, 8)}...{p.address.slice(-4)}
+                          </button>
+                        </td>
                         <td style={{ padding: '0.85rem 1rem', color: 'var(--emerald-accent)', fontWeight: 600 }}>{p.yesTally}</td>
                         <td style={{ padding: '0.85rem 1rem', color: 'var(--rose-accent)', fontWeight: 600 }}>{p.noTally}</td>
                         <td style={{ padding: '0.85rem 1rem', fontWeight: 600 }}>{total}</td>
@@ -1000,6 +1029,58 @@ export function App() {
           </div>
         )}
       </main>
+
+      {/* FULL CONTRACT ADDRESS MODAL */}
+      {selectedAddressModal && (
+        <div className="modal-overlay" onClick={() => setSelectedAddressModal(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '620px' }}>
+            <div className="modal-header">
+              <h3 className="modal-title">📜 Full Smart Contract Address</h3>
+              <button className="close-btn" onClick={() => setSelectedAddressModal(null)}>✕</button>
+            </div>
+
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.25rem' }}>
+              Below is the complete 64-character Zero-Knowledge smart contract address deployed on-chain:
+            </p>
+
+            <div className="form-group">
+              <label className="form-label">Full Contract Address (64 Hex Chars)</label>
+              <textarea
+                readOnly
+                className="form-control"
+                rows={3}
+                style={{
+                  fontFamily: 'var(--font-code)',
+                  fontSize: '0.95rem',
+                  color: 'var(--cyan-accent)',
+                  background: 'rgba(0,0,0,0.4)',
+                  wordBreak: 'break-all',
+                  padding: '0.85rem',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--cyan-accent)'
+                }}
+                value={selectedAddressModal}
+                onClick={(e) => (e.target as HTMLTextAreaElement).select()}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem' }}>
+              <button type="button" className="btn-secondary" onClick={() => setSelectedAddressModal(null)}>
+                Close
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => {
+                  handleCopyContractAddress(selectedAddressModal);
+                }}
+              >
+                📋 Copy Full Address
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* VOTE MODAL */}
       {voteProposal && (
