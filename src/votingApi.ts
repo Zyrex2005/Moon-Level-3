@@ -86,22 +86,34 @@ const FREIGHTER_STORAGE_KEY = 'zyrex_freighter_proposals_v3';
 export function isValidContractAddress(addr: string): boolean {
   if (!addr || typeof addr !== 'string') return false;
   const clean = addr.trim();
-  // Midnight contract address format: 64 hex characters
-  if (/^[0-9a-fA-F]{64}$/.test(clean)) return true;
-  // Soroban/Stellar contract address format: 56 characters starting with 'C'
-  if (/^C[A-Z0-9]{55}$/.test(clean)) return true;
+
+  // 1. Hex format with optional 0x prefix (32 to 128 hex characters, including 64-char Midnight addresses)
+  if (/^(0x)?[0-9a-fA-F]{8,128}$/.test(clean)) return true;
+
+  // 2. Midnight Bech32 address format (e.g. midnight1...)
+  if (/^midnight[a-z0-9]{32,90}$/i.test(clean)) return true;
+
+  // 3. Soroban/Stellar contract & account address format: 56 characters starting with 'C' or 'G'
+  if (/^[CG][A-Z0-9]{55}$/.test(clean)) return true;
+
+  // 4. Test/simulation identifier format (alphanumeric with hyphens/underscores)
+  if (/^[a-zA-Z0-9_\-]{4,128}$/.test(clean)) return true;
+
   return false;
 }
 
 export function safeAsContractAddress(addr: string): any {
+  if (!addr || typeof addr !== 'string') return addr;
+  const clean = addr.trim();
+  const hexOnly = clean.startsWith('0x') || clean.startsWith('0X') ? clean.slice(2) : clean;
   try {
-    if (addr && /^[0-9a-fA-F]{64}$/.test(addr.trim())) {
-      return asContractAddress(addr.trim());
+    if (/^[0-9a-fA-F]{64}$/.test(hexOnly)) {
+      return asContractAddress(hexOnly);
     }
   } catch (err) {
     console.warn('asContractAddress warning:', err);
   }
-  return addr as any;
+  return clean as any;
 }
 
 // Generate valid 64-char Hex Midnight Contract Address ('0200' + 60 hex chars = 64 chars total)
@@ -514,7 +526,7 @@ export async function seedInitialDemoProposals(): Promise<ProposalState[]> {
 
   const demoProposals: ProposalState[] = [
     {
-      address: '02008f3a91b2c47e82b49c0d9e4a1f3c8b7e6d5a4f3e2d1c0b9a8f7e6d5c4b3a',
+      address: 'GARNEUZKZX3QPOXNVD3KVYF3QRMXKQUA3TXD4HXLGZ36DXYXLZIDFFZJ',
       proposalId: 'a1b2c3d4e5f607182930a1b2c3d4e5f607182930a1b2c3d4e5f607182930a1b2',
       proposalText: 'Should Zyrex ZK Governance implement multi-party computation (MPC) key-share rotation for vault security?',
       category: 'Technical',
@@ -527,7 +539,7 @@ export async function seedInitialDemoProposals(): Promise<ProposalState[]> {
       nullifiers: []
     },
     {
-      address: '02009f4b92c3d58e93b59d0e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a',
+      address: '0x03b16daf93a184b0593d11d7b073f9df5d113f8c8d14ace046ce0f153471fe8c',
       proposalId: 'b2c3d4e5f607182930a1b2c3d4e5f607182930a1b2c3d4e5f607182930a1b2c3',
       proposalText: 'Allocate 500,000 ZYX tokens to fund Zyrex Privacy Ecosystem Developer Grants (Q3 2026)',
       category: 'Grants',

@@ -33,18 +33,19 @@ An upgraded, production-grade, zero-knowledge privacy-preserving decentralized a
 
 ## Deployed Smart Contract Details
 
-The smart contract for the Private Voting dApp is deployed and active on the **Midnight Preprod Testnet**.
+The smart contract for the Private Voting dApp is deployed and active on the **Midnight Preprod Testnet** and **Stellar / Soroban Network**.
 
 | Property | Value / Details |
 | :--- | :--- |
-| **Network** | **Midnight Preprod Testnet** |
+| **Network** | **Midnight Preprod Testnet** & **Stellar / Soroban** |
 | **Contract Name** | `voting.compact` |
-| **Deployed Contract Address** | `02008a62a84fd09e1c4b7a3e9f2d1c5a8b7e6d5f4c3b2a1e0f9d8c7b6a5f4e3d` |
+| **Midnight Contract Address** | `0x03b16daf93a184b0593d11d7b073f9df5d113f8c8d14ace046ce0f153471fe8c` |
+| **Frighter/ Soroban Address** | `GARNEUZKZX3QPOXNVD3KVYF3QRMXKQUA3TXD4HXLGZ36DXYXLZIDFFZJ` |
 | **Contract State Identifier** | `votingPrivateState` |
 | **Substrate Node RPC** | `https://rpc.testnet.midnight.network` |
 | **Indexer Endpoint** | `https://indexer.testnet.midnight.network/api/v1/graphql` |
 | **Prover Server URI** | `https://prover.testnet.midnight.network` |
-| **Supported Wallet** | Lace Wallet Extension (Midnight Devnet / Preprod) |
+| **Supported Wallets** | Lace Wallet (Midnight Preprod) / Freighter Wallet (Stellar) |
 
 ---
 
